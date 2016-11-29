@@ -7,16 +7,15 @@
 
 - name: set role variables, if necessary
   include: set-role-variables.yml
-
+    
+- name: set internal variables for convenience
+  set_fact:
+    prometheus_mongodb_exporter_url: "https://github.com/dcu/mongodb_exporter/releases/download/v{{ prometheus_mongodb_exporter_version }}/mongodb_exporter-linux-amd64"
+    prometheus_mongodb_exporter_subdir: "{{ prometheus_install_path }}/mongodb_exporter-linux-amd64"
 
 - name: install libselinux-python binary for Ansible to work
   yum: name=libselinux-python state=present
   when: ansible_pkg_mgr == "yum"
-
-- name: install dependencies for compiling Prometheus source code
-  include: install-compile-tools.yml
-
-
 
 - name: create Prometheus group
   group: name=prometheus state=present
@@ -42,32 +41,13 @@
     - "{{ prometheus_log_path }}"
     - "{{ prometheus_pid_path }}"
 
+- name: download mongodb_exporter
+  get_url:
+    url: "{{ prometheus_mongodb_exporter_url }}"
+    dest: "{{ prometheus_install_path }}/mongodb_exporter"
 
-- name: install helper utility "gosu", if necessary
-  include: install-gosu.yml
-  when: not mongodb_exporter_use_systemd|bool
-
-
-
-- name: build mongodb_exporter source code
-  command: go get -u github.com/dcu/mongodb_exporter
-  args:
-    creates: "{{ prometheus_gopath }}/bin/mongodb_exporter"
-  environment:
-    GO15VENDOREXPERIMENT: 1
-    GOROOT: "{{ prometheus_goroot }}"
-    GOPATH: "{{ prometheus_gopath }}"
-    PATH: "{{ ansible_env.PATH }}:{{ prometheus_goroot }}/bin:{{ prometheus_gopath }}/bin"
-
-- name: copy the built mongodb_exporter to the install path
-  command: "cp  {{ prometheus_gopath }}/bin/mongodb_exporter  {{ prometheus_install_path }}"
-  args:
-    creates: "{{ prometheus_install_path }}/mongodb_exporter"
-
-
-
-#- name: copy mongodb_exporter executable
-#  copy: src="../files/mongodb_exporter-linux-amd64"  dest={{ prometheus_install_path }}/mongodb_exporter mode="a+x"
+- name: set permissions, owner and group
+  file: path={{ prometheus_install_path }}/mongodb_exporter owner={{ prometheus_user }} group={{ prometheus_group }} mode="a+x"
 
 - name: set prometheus variables
   copy: src="../files/etc-default-mongodb_exporter"  dest=/etc/default/mongodb_exporter
@@ -82,6 +62,5 @@
   template: src="../templates/mongodb_exporter.service.j2"  dest="/lib/systemd/system/mongodb_exporter.service"
   when: mongodb_exporter_use_systemd
 
-
 - name: set INIT status
-  service: name=mongodb_exporter enabled=yes
+  service: name=mongodb_exporter enabled=yes state=started
