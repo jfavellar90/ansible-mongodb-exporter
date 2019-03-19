@@ -1,12 +1,9 @@
 ---
 # file: handlers/main.yml
 #
-
-- name: restart mongodb_exporter
-  service: name=mongodb_exporter state=restarted
-
-- name: reload mongodb_exporter
-  service: name=mongodb_exporter state=reloaded
-
-- name: stop mongodb_exporter
-  service: name=mongodb_exporter state=stopped
+- name: restart mongodb exporter
+  become: true
+  systemd:
+    daemon_reload: true
+    name: mongodb_exporter
+    state: restarted

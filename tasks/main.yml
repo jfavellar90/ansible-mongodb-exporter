@@ -5,62 +5,69 @@
 # @see https://github.com/dcu/mongodb_exporter
 #
 
-- name: set role variables, if necessary
-  include: set-role-variables.yml
-    
-- name: set internal variables for convenience
-  set_fact:
-    prometheus_mongodb_exporter_url: "https://github.com/dcu/mongodb_exporter/releases/download/v{{ prometheus_mongodb_exporter_version }}/mongodb_exporter-linux-amd64"
-    prometheus_mongodb_exporter_subdir: "{{ prometheus_install_path }}/mongodb_exporter-linux-amd64"
+# - name: set role variables, if necessary
+#   include: set-role-variables.yml
 
-- name: install libselinux-python binary for Ansible to work
-  yum: name=libselinux-python state=present
-  when: ansible_pkg_mgr == "yum"
-
-- name: create Prometheus group
-  group: name=prometheus state=present
-
-- name: create Prometheus user
-  user:
-    name: prometheus
-    group: prometheus
-    createhome: no
-    shell: /sbin/nologin
-    comment: "Prometheus User"
+- name: Create the Mongo Exporter group
+  group:
+    name: "{{ mongodb_exporter_group }}"
     state: present
+    system: true
 
-- name: mkdir for general cases
-  file:
-    path: "{{ item }}"
-    state: directory
-    owner: "{{ prometheus_user }}"
-    group: "{{ prometheus_group }}"
-    mode: "u=rwx,g=rx,o="
-  with_items:
-    - "{{ prometheus_install_path }}"
-    - "{{ prometheus_log_path }}"
-    - "{{ prometheus_pid_path }}"
+- name: Create the Mongo Exporter user
+  user:
+    name: "{{ mongodb_exporter_user }}"
+    groups: "{{ mongodb_exporter_group }}"
+    append: true
+    shell: /usr/sbin/nologin
+    system: true
+    createhome: false
+    home: /
 
-- name: download mongodb_exporter
+- name: Download mongodb_exporter binary to local folder
+  become: false
   get_url:
-    url: "{{ prometheus_mongodb_exporter_url }}"
-    dest: "{{ prometheus_install_path }}/mongodb_exporter"
+    url: "https://github.com/dcu/mongodb_exporter/releases/download/v{{ mongodb_exporter_version }}/mongodb_exporter-linux-{{ go_arch_map[ansible_architecture] | default(ansible_architecture) }}"
+    dest: "/tmp/mongodb_exporter-{{ mongodb_exporter_version }}-linux-{{ go_arch_map[ansible_architecture] | default(ansible_architecture) }}"
+  register: _download_binary
+  until: _download_binary is succeeded
+  retries: 5
+  delay: 2
+  delegate_to: localhost
+  check_mode: false
 
-- name: set permissions, owner and group
-  file: path={{ prometheus_install_path }}/mongodb_exporter owner={{ prometheus_user }} group={{ prometheus_group }} mode="a+x"
+# - name: Unpack mongodb_exporter binary
+#   become: false
+#   unarchive:
+#     src: "/tmp/mongodb_exporter-{{ mongodb_exporter_version }}.linux-{{ go_arch_map[ansible_architecture] | default(ansible_architecture) }}.tar.gz"
+#     dest: "/tmp"
+#     creates: "/tmp/mongodb_exporter-{{ mongodb_exporter_version }}.linux-{{ go_arch_map[ansible_architecture] | default(ansible_architecture) }}/mongodb_exporter"
+#   delegate_to: localhost
+#   check_mode: false
 
-- name: set prometheus variables
-  copy: src="../files/etc-default-mongodb_exporter"  dest=/etc/default/mongodb_exporter
-
-- name: copy INIT script to server
-  template: src="../templates/mongodb_exporter.sysvinit.{{ ansible_os_family|lower }}.sh.j2"  dest="/etc/init.d/mongodb_exporter"  mode="a+x"
+- name: Propagate mongodb_exporter binaries
+  copy:
+    src: "/tmp/mongodb_exporter-{{ mongodb_exporter_version }}-linux-{{ go_arch_map[ansible_architecture] | default(ansible_architecture) }}"
+    dest: "/usr/local/bin/mongodb_exporter"
+    mode: 0755
+    owner: root
+    group: root
   notify:
-    - restart mongodb_exporter
-  when: not mongodb_exporter_use_systemd|bool
+    - restart mongodb exporter
+  when: not ansible_check_mode
 
-- name: copy systemd config to server
-  template: src="../templates/mongodb_exporter.service.j2"  dest="/lib/systemd/system/mongodb_exporter.service"
-  when: mongodb_exporter_use_systemd
+- name: Copy the mongodb_exporter systemd service file
+  template:
+    src: mongodb_exporter.service.j2
+    dest: /etc/systemd/system/mongodb_exporter.service
+    owner: root
+    group: root
+    mode: 0644
+  no_log: true
+  notify:
+    - restart mongodb exporter
 
-- name: set INIT status
-  service: name=mongodb_exporter enabled=yes state=started
+- name: Ensure mongodb_exporter is enabled on boot
+  systemd:
+    name: mongodb_exporter
+    enabled: true

@@ -10,27 +10,13 @@
 # user-configurable defaults
 #
 
-prometheus_mongodb_exporter_version: 1.0.0
+mongodb_exporter_version: 1.0.0
 
-prometheus_user:   prometheus
-prometheus_group:  prometheus
-
-prometheus_install_path:  /opt/prometheus
-prometheus_log_path:      /var/log/prometheus
-prometheus_pid_path:      /var/run/prometheus
-
-prometheus_download_path: /tmp
-prometheus_workdir:       "{{ prometheus_download_path }}/prometheus_workdir"
-prometheus_goroot:        "{{ prometheus_workdir }}/go"
-prometheus_gopath:        "{{ prometheus_workdir }}/gopath"
+mongodb_exporter_user: mongodb-exp
+mongodb_exporter_group: mongodb-exp
 
 mongodb_exporter_mongodb_uri:    "mongodb://localhost:27017"
 
 #
 # derived variables; internal use only.
 #
-
-
-#---- the following vars are handled in tasks/set-role-variables.yml ------
-
-#mongodb_exporter_use_systemd: False  # use "systemd" to start/restart service?
